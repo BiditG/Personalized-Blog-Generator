@@ -60,9 +60,40 @@ def generate_blog_ollama(topic, tone, audience, word_count, model, subheadings,
     - Bullet points, lists, or examples when helpful
     - {"Include conclusion with a strong CTA: " + cta_type if include_conclusion else ""}
     """
-    result = subprocess.run(["ollama", "run", model], input=prompt.encode(), capture_output=True)
-    raw_blog = result.stdout.decode()
-    return grammar_enhance(raw_blog)
+
+    # Debug: Show prompt in app for inspection
+    with st.expander("🔍 Debug Prompt"):
+        st.code(prompt, language="markdown")
+
+    try:
+        result = subprocess.run(
+            ["ollama", "run", model],
+            input=prompt.encode(),
+            capture_output=True,
+            timeout=300  # seconds
+        )
+        if result.returncode != 0:
+            st.error("🛑 Model returned an error. Please check if the model is installed and working.")
+            st.code(result.stderr.decode(), language="bash")
+            return "ERROR: Model execution failed."
+
+        output = result.stdout.decode().strip()
+
+        if not output:
+            st.warning("⚠️ Model returned no output. This might be due to system overload or incomplete model.")
+            return "ERROR: No response from model."
+
+        return grammar_enhance(output)
+
+    except subprocess.TimeoutExpired:
+        st.error("⏳ Model generation timed out. Try using a smaller model or reducing word count.")
+        return "ERROR: Model timed out."
+
+    except Exception as e:
+        st.error("🚨 Unexpected error during model execution.")
+        st.code(str(e))
+        return f"ERROR: {str(e)}"
+
 
 # ---------- Save Blog to DB ----------
 def save_blog_to_db(topic, tone, audience, word_count, model, blog_text, style,
@@ -181,7 +212,7 @@ template_choice = st.sidebar.selectbox("Writing Template Preset", list(TEMPLATE_
 template = TEMPLATE_PRESETS[template_choice]
 
 word_count = st.sidebar.slider("Word Count", 300, 2000, 800)
-model = st.sidebar.selectbox("AI Model", ["llama3", "mixtral", "mistral"])
+model = st.sidebar.selectbox("AI Model", ["llama3", "gemma", "mistral"])
 subheadings = st.sidebar.slider("H2 Subheadings", 2, 6, 4)
 include_meta = st.sidebar.checkbox("Include Meta Description", value=True)
 include_conclusion = st.sidebar.checkbox("Include Conclusion + CTA", value=True)
